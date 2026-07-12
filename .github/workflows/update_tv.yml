@@ -1,13 +1,10 @@
 name: Auto Update Link TV StreamPro
-
 on:
   schedule:
     - cron: '0 */3 * * *'
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,7 +12,7 @@ jobs:
     - name: Mengambil isi folder
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }} # Menambahkan identitas resmi
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Menyiapkan Python
       uses: actions/setup-python@v5
@@ -30,6 +27,7 @@ jobs:
         python - <<EOF
         import requests
         import re
+        from bs4 import BeautifulSoup
 
         channels = {
             'rcti': 'https://www.rctiplus.com/tv/rcti',
@@ -38,13 +36,41 @@ jobs:
             'inews': 'https://www.rctiplus.com/tv/inews'
         }
         headers = {'User-Agent': 'Mozilla/5.0'}
+
         for name, url in channels.items():
             try:
-                r = requests.get(url, headers=headers)
-                match = re.search(r'(https://[a-zA-Z0-9\-\./_]+master\.m3u8\?[^"\']+)', r.text)
-                if match:
-                    with open(f"{name}.m3u8", "w") as f:
-                        f.write(f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{match.group(1)}\n")
+                r = requests.get(url, headers=headers, timeout=10)
+                soup = BeautifulSoup(r.text, 'html.parser')
+
+                # Cari di dalam tag <script> terlebih dahulu
+                scripts = soup.find_all('script')
+                found = False
+                for script in scripts:
+                    if script.string and 'master.m3u8' in script.string:
+                        match = re.search(
+                            r'(https?://[^\s"\']+?master\.m3u8[^\s"\']*)',
+                            script.string
+                        )
+                        if match:
+                            with open(f"{name}.m3u8", "w") as f:
+                                f.write(f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{match.group(1)}\n")
+                            print(f"Berhasil: {name}")
+                            found = True
+                            break
+
+                # Fallback: cari langsung di seluruh teks HTML
+                if not found:
+                    match = re.search(
+                        r'(https?://[^\s"\']+?master\.m3u8[^\s"\']*)',
+                        r.text
+                    )
+                    if match:
+                        with open(f"{name}.m3u8", "w") as f:
+                            f.write(f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{match.group(1)}\n")
+                        print(f"Berhasil (fallback): {name}")
+                    else:
+                        print(f"Tidak menemukan link m3u8 untuk {name}")
+
             except Exception as e:
                 print(f"Error {name}: {e}")
         EOF
@@ -53,6 +79,12 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add *.m3u8
-        git commit -m "Update otomatis link TV" || exit 0
-        git push
+
+        # Cek apakah ada file .m3u8
+        if ls *.m3u8 1> /dev/null 2>&1; then
+          git add *.m3u8
+          git commit -m "Update otomatis link TV" || exit 0
+          git push
+        else
+          echo "Tidak ada file .m3u8 baru, lewati commit."
+        fi
