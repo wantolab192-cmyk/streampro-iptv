@@ -5,7 +5,6 @@ on:
     - cron: '0 */3 * * *'
   workflow_dispatch:
 
-# 🔥 INI KUNCI RAHASIANYA: Memberikan izin robot untuk menulis/menyimpan file
 permissions:
   contents: write
 
@@ -14,22 +13,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Mengambil isi folder
-      uses: actions/checkout@v4 # Diperbarui ke v4 agar warning kuning hilang
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }} # Menambahkan identitas resmi
 
     - name: Menyiapkan Python
-      uses: actions/setup-python@v5 # Diperbarui ke v5
+      uses: actions/setup-python@v5
       with:
         python-version: '3.x'
 
-    - name: Menginstal dependensi scraper
+    - name: Menginstal dependensi
       run: pip install requests beautifulsoup4
 
-    - name: Menjalankan Script Detektif Token
+    - name: Menjalankan Script
       run: |
         python - <<EOF
         import requests
         import re
-        from bs4 import BeautifulSoup
 
         channels = {
             'rcti': 'https://www.rctiplus.com/tv/rcti',
@@ -37,29 +37,22 @@ jobs:
             'gtv': 'https://www.rctiplus.com/tv/gtv',
             'inews': 'https://www.rctiplus.com/tv/inews'
         }
-
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-
+        headers = {'User-Agent': 'Mozilla/5.0'}
         for name, url in channels.items():
             try:
-                response = requests.get(url, headers=headers)
-                match = re.search(r'(https://[a-zA-Z0-9\-\./_]+master\.m3u8\?[^"\']+)', response.text)
+                r = requests.get(url, headers=headers)
+                match = re.search(r'(https://[a-zA-Z0-9\-\./_]+master\.m3u8\?[^"\']+)', r.text)
                 if match:
-                    link_segar = match.group(1)
-                    content = f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{link_segar}\n"
                     with open(f"{name}.m3u8", "w") as f:
-                        f.write(content)
-                    print(f"Berhasil memperbarui {name}")
-                else:
-                    print(f"Gagal menemukan token untuk {name}")
+                        f.write(f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{match.group(1)}\n")
             except Exception as e:
-                print(f"Error pada {name}: {e}")
+                print(f"Error {name}: {e}")
         EOF
 
-    - name: Menyimpan hasil perubahan ke GitHub Bos
+    - name: Commit dan Push
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add *.m3u8
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update otomatis token streaming TV"
+        git commit -m "Update otomatis link TV" || exit 0
         git push
