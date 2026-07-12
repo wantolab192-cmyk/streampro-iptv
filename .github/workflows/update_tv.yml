@@ -1,18 +1,20 @@
 name: Auto Update Link TV StreamPro
+
 on:
   schedule:
     - cron: '0 */3 * * *'
   workflow_dispatch:
+
+# Wajib untuk mengizinkan bot menyimpan file
 permissions:
   contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - name: Mengambil isi folder
       uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Menyiapkan Python
       uses: actions/setup-python@v5
@@ -22,12 +24,11 @@ jobs:
     - name: Menginstal dependensi
       run: pip install requests beautifulsoup4
 
-    - name: Menjalankan Script + Debug
+    - name: Menjalankan Script Pencari Token
       run: |
         python - <<EOF
         import requests
         import re
-        from bs4 import BeautifulSoup
 
         channels = {
             'rcti': 'https://www.rctiplus.com/tv/rcti',
@@ -36,62 +37,21 @@ jobs:
             'inews': 'https://www.rctiplus.com/tv/inews'
         }
         headers = {'User-Agent': 'Mozilla/5.0'}
-
         for name, url in channels.items():
             try:
-                print(f"\n=== Memproses {name} ===")
-                r = requests.get(url, headers=headers, timeout=10)
-                soup = BeautifulSoup(r.text, 'html.parser')
-
-                # Cari semua tag <script>
-                scripts = soup.find_all('script')
-                found = False
-                for idx, script in enumerate(scripts):
-                    if script.string and 'm3u8' in script.string:
-                        print(f"[DEBUG] Ditemukan 'm3u8' di script ke-{idx}, panjang string: {len(script.string)}")
-                        # Cetak 300 karakter di sekitar kemunculan pertama 'm3u8'
-                        pos = script.string.find('m3u8')
-                        start = max(0, pos - 150)
-                        end = min(len(script.string), pos + 150)
-                        snippet = script.string[start:end]
-                        print(f"[DEBUG] Potongan teks:\n{snippet}\n")
-                        
-                        match = re.search(r'(https?://[^\s"\']+?master\.m3u8[^\s"\']*)', script.string)
-                        if match:
-                            with open(f"{name}.m3u8", "w") as f:
-                                f.write(f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{match.group(1)}\n")
-                            print(f"Berhasil menulis {name}.m3u8")
-                            found = True
-                            break
-                        else:
-                            print("[DEBUG] Regex tidak cocok di script ini.")
-
-                if not found:
-                    # Cari di seluruh HTML
-                    if 'm3u8' in r.text:
-                        print("[DEBUG] 'm3u8' ditemukan di full HTML, mencoba fallback regex.")
-                        match = re.search(r'(https?://[^\s"\']+?master\.m3u8[^\s"\']*)', r.text)
-                        if match:
-                            with open(f"{name}.m3u8", "w") as f:
-                                f.write(f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{match.group(1)}\n")
-                            print(f"Berhasil menulis {name}.m3u8 (fallback)")
-                        else:
-                            print("Gagal: Regex fallback juga tidak cocok.")
-                    else:
-                        print("Gagal: Tidak ada string 'm3u8' di seluruh halaman.")
-
+                r = requests.get(url, headers=headers)
+                match = re.search(r'(https://[a-zA-Z0-9\-\./_]+master\.m3u8\?[^"\']+)', r.text)
+                if match:
+                    with open(f"{name}.m3u8", "w") as f:
+                        f.write(f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{match.group(1)}\n")
+                    print(f"Sukses mendapatkan {name}")
             except Exception as e:
                 print(f"Error {name}: {e}")
         EOF
 
-    - name: Commit dan Push
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        if ls *.m3u8 1> /dev/null 2>&1; then
-          git add *.m3u8
-          git commit -m "Update otomatis link TV" || exit 0
-          git push
-        else
-          echo "Tidak ada file .m3u8 baru, lewati commit."
-        fi
+    # 🔥 INI JURUS ULTIMATE-NYA: Plugin otomatis untuk Push tanpa error 128 🔥
+    - name: Menyimpan dan Push File ke GitHub
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "Update otomatis link TV"
+        file_pattern: "*.m3u8"
