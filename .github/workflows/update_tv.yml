@@ -23,52 +23,63 @@ jobs:
     - name: Menginstal dependensi
       run: pip install requests
 
-    - name: Menjalankan Script Penyaring Link TV
+    - name: Menjalankan Script Detektif Multi-Sumber
       run: |
         python - <<EOF
         import requests
 
-        # Mengambil daftar ratusan TV dari sumber terbuka komunitas (sangat stabil)
-        url_sumber = "https://raw.githubusercontent.com/TundranM/ID-IPTV/main/iptv.m3u"
-        
-        try:
-            r = requests.get(url_sumber)
-            r.raise_for_status()
-            baris_teks = r.text.splitlines()
-            
-            # Daftar TV yang ingin kita curi dari sumber
-            target_tv = {
-                'RCTI': 'rcti.m3u8', 
-                'MNCTV': 'mnctv.m3u8', 
-                'GTV': 'gtv.m3u8',
-                'GLOBAL TV': 'gtv.m3u8',
-                'INEWS': 'inews.m3u8'
-            }
-            
-            tv_ditemukan = None
-            for baris in baris_teks:
-                # Jika baris ini memuat nama TV
-                if baris.startswith('#EXTINF'):
-                    tv_ditemukan = None
-                    for kunci in target_tv:
-                        if kunci in baris.upper():
-                            tv_ditemukan = kunci
-                            break
-                # Jika baris ini memuat link http dan TV sudah ditemukan sebelumnya
-                elif baris.startswith('http') and tv_ditemukan:
-                    nama_file = target_tv[tv_ditemukan]
-                    # Buat file fisik .m3u8 nya
-                    with open(nama_file, "w") as f:
-                        f.write(f"#EXTM3U\n#EXTINF:-1,{tv_ditemukan} Live\n{baris}\n")
-                    print(f"✅ Sukses membuat {nama_file}")
-                    tv_ditemukan = None # Reset agar tidak tertimpa
+        # Sumber 1: IPTV-ORG (Skala Global)
+        # Sumber 2: DhanyTV (Khusus TV Indonesia Terbaru)
+        sumber_list = [
+            "https://raw.githubusercontent.com/dhasap/dhanytv/main/dhanytv.m3u",
+            "https://iptv-org.github.io/iptv/countries/id.m3u"
+        ]
+
+        # Daftar TV yang ingin kita ambil
+        target_tv = {
+            'RCTI': 'rcti.m3u8', 
+            'MNCTV': 'mnctv.m3u8',
+            'MNC TV': 'mnctv.m3u8',
+            'GTV': 'gtv.m3u8',
+            'GLOBAL TV': 'gtv.m3u8',
+            'INEWS': 'inews.m3u8'
+        }
+
+        # Catatan agar file yang sudah terbuat tidak tertimpa link kosong
+        tv_ditemukan_total = set()
+
+        for url in sumber_list:
+            print(f"Mencari di sumber: {url}")
+            try:
+                r = requests.get(url, timeout=10)
+                if r.status_code == 200:
+                    baris_teks = r.text.splitlines()
+                    tv_saat_ini = None
                     
-        except Exception as e:
-            print(f"❌ Gagal mengambil data: {e}")
+                    for baris in baris_teks:
+                        if baris.startswith('#EXTINF'):
+                            tv_saat_ini = None
+                            for kunci in target_tv:
+                                # Cari nama TV, dan pastikan belum kita buat filenya
+                                if kunci in baris.upper() and target_tv[kunci] not in tv_ditemukan_total:
+                                    tv_saat_ini = kunci
+                                    break
+                        elif baris.startswith('http') and tv_saat_ini:
+                            nama_file = target_tv[tv_saat_ini]
+                            # Buat file fisiknya
+                            with open(nama_file, "w") as f:
+                                f.write(f"#EXTM3U\n#EXTINF:-1,{tv_saat_ini} Live\n{baris}\n")
+                            print(f"✅ Sukses membuat {nama_file} dari {tv_saat_ini}")
+                            tv_ditemukan_total.add(nama_file)
+                            tv_saat_ini = None
+            except Exception as e:
+                print(f"❌ Gagal akses {url}: {e}")
+
+        print(f"Total file yang berhasil dibuat: {len(tv_ditemukan_total)}")
         EOF
 
     - name: Menyimpan File ke Repositori Bos
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
-        commit_message: "Update otomatis link TV (Versi Komunitas)"
+        commit_message: "Update otomatis link TV dari sumber publik yang valid"
         file_pattern: "*.m3u8"
