@@ -1,0 +1,64 @@
+name: Auto Update Link TV StreamPro
+
+on:
+  schedule:
+    # Mengatur robot agar berjalan otomatis setiap 3 jam sekali (Format Cron)
+    - cron: '0 */3 * * *'
+  workflow_dispatch: # Memungkinkan Bos memicu secara manual lewat tombol di web
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Mengambil isi folder
+      uses: actions/checkout@v3
+
+    - name: Menyiapkan Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Menginstal dependensi scraper
+      run: pip install requests beautifulsoup4
+
+    - name: Menjalankan Script Detektif Token
+      run: |
+        python - <<EOF
+        import requests
+        import re
+        from bs4 import BeautifulSoup
+
+        channels = {
+            'rcti': 'https://www.rctiplus.com/tv/rcti',
+            'mnctv': 'https://www.rctiplus.com/tv/mnctv',
+            'gtv': 'https://www.rctiplus.com/tv/gtv',
+            'inews': 'https://www.rctiplus.com/tv/inews'
+        }
+
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+
+        for name, url in channels.items():
+            try:
+                response = requests.get(url, headers=headers)
+                # Mencari link m3u8 asli beserta tokennya di kode HTML web
+                match = re.search(r'(https://[a-zA-Z0-9\-\./_]+master\.m3u8\?[^"\']+)', response.text)
+                if match:
+                    link_segar = match.group(1)
+                    # Membuat isi file .m3u8 statis untuk android
+                    content = f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{link_segar}\n"
+                    with open(f"{name}.m3u8", "w") as f:
+                        f.write(content)
+                    print(f"Berhasil memperbarui {name}")
+                else:
+                    print(f"Gagal menemukan token untuk {name}")
+            except Exception as e:
+                print(f"Error pada {name}: {e}")
+        EOF
+
+    - name: Menyimpan hasil perubahan ke GitHub Bos
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add *.m3u8
+        git diff --quiet && git diff --staged --quiet || git commit -m "Update otomatis token streaming TV"
+        git push
