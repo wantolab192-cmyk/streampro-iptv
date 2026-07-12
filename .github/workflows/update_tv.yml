@@ -5,7 +5,6 @@ on:
     - cron: '0 */3 * * *'
   workflow_dispatch:
 
-# Wajib untuk mengizinkan bot menyimpan file
 permissions:
   contents: write
 
@@ -22,36 +21,54 @@ jobs:
         python-version: '3.x'
 
     - name: Menginstal dependensi
-      run: pip install requests beautifulsoup4
+      run: pip install requests
 
-    - name: Menjalankan Script Pencari Token
+    - name: Menjalankan Script Penyaring Link TV
       run: |
         python - <<EOF
         import requests
-        import re
 
-        channels = {
-            'rcti': 'https://www.rctiplus.com/tv/rcti',
-            'mnctv': 'https://www.rctiplus.com/tv/mnctv',
-            'gtv': 'https://www.rctiplus.com/tv/gtv',
-            'inews': 'https://www.rctiplus.com/tv/inews'
-        }
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        for name, url in channels.items():
-            try:
-                r = requests.get(url, headers=headers)
-                match = re.search(r'(https://[a-zA-Z0-9\-\./_]+master\.m3u8\?[^"\']+)', r.text)
-                if match:
-                    with open(f"{name}.m3u8", "w") as f:
-                        f.write(f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{match.group(1)}\n")
-                    print(f"Sukses mendapatkan {name}")
-            except Exception as e:
-                print(f"Error {name}: {e}")
+        # Mengambil daftar ratusan TV dari sumber terbuka komunitas (sangat stabil)
+        url_sumber = "https://raw.githubusercontent.com/TundranM/ID-IPTV/main/iptv.m3u"
+        
+        try:
+            r = requests.get(url_sumber)
+            r.raise_for_status()
+            baris_teks = r.text.splitlines()
+            
+            # Daftar TV yang ingin kita curi dari sumber
+            target_tv = {
+                'RCTI': 'rcti.m3u8', 
+                'MNCTV': 'mnctv.m3u8', 
+                'GTV': 'gtv.m3u8',
+                'GLOBAL TV': 'gtv.m3u8',
+                'INEWS': 'inews.m3u8'
+            }
+            
+            tv_ditemukan = None
+            for baris in baris_teks:
+                # Jika baris ini memuat nama TV
+                if baris.startswith('#EXTINF'):
+                    tv_ditemukan = None
+                    for kunci in target_tv:
+                        if kunci in baris.upper():
+                            tv_ditemukan = kunci
+                            break
+                # Jika baris ini memuat link http dan TV sudah ditemukan sebelumnya
+                elif baris.startswith('http') and tv_ditemukan:
+                    nama_file = target_tv[tv_ditemukan]
+                    # Buat file fisik .m3u8 nya
+                    with open(nama_file, "w") as f:
+                        f.write(f"#EXTM3U\n#EXTINF:-1,{tv_ditemukan} Live\n{baris}\n")
+                    print(f"✅ Sukses membuat {nama_file}")
+                    tv_ditemukan = None # Reset agar tidak tertimpa
+                    
+        except Exception as e:
+            print(f"❌ Gagal mengambil data: {e}")
         EOF
 
-    # 🔥 INI JURUS ULTIMATE-NYA: Plugin otomatis untuk Push tanpa error 128 🔥
-    - name: Menyimpan dan Push File ke GitHub
+    - name: Menyimpan File ke Repositori Bos
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
-        commit_message: "Update otomatis link TV"
+        commit_message: "Update otomatis link TV (Versi Komunitas)"
         file_pattern: "*.m3u8"
