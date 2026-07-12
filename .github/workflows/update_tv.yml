@@ -2,19 +2,22 @@ name: Auto Update Link TV StreamPro
 
 on:
   schedule:
-    # Mengatur robot agar berjalan otomatis setiap 3 jam sekali (Format Cron)
     - cron: '0 */3 * * *'
-  workflow_dispatch: # Memungkinkan Bos memicu secara manual lewat tombol di web
+  workflow_dispatch:
+
+# 🔥 INI KUNCI RAHASIANYA: Memberikan izin robot untuk menulis/menyimpan file
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - name: Mengambil isi folder
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # Diperbarui ke v4 agar warning kuning hilang
 
     - name: Menyiapkan Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # Diperbarui ke v5
       with:
         python-version: '3.x'
 
@@ -40,11 +43,9 @@ jobs:
         for name, url in channels.items():
             try:
                 response = requests.get(url, headers=headers)
-                # Mencari link m3u8 asli beserta tokennya di kode HTML web
                 match = re.search(r'(https://[a-zA-Z0-9\-\./_]+master\.m3u8\?[^"\']+)', response.text)
                 if match:
                     link_segar = match.group(1)
-                    # Membuat isi file .m3u8 statis untuk android
                     content = f"#EXTM3U\n#EXTINF:-1,{name.upper()} Live\n{link_segar}\n"
                     with open(f"{name}.m3u8", "w") as f:
                         f.write(content)
